@@ -3,44 +3,60 @@ import blobfile as bf
 from mpi4py import MPI
 import numpy as np
 from torch.utils.data import DataLoader, Dataset
+import os
+import cv2
 
 
 def load_data(
     *, data_dir, batch_size, image_size, class_cond=False, deterministic=False
 ):
-    """
-    For a dataset, create a generator over (images, kwargs) pairs.
-
-    Each images is an NCHW float tensor, and the kwargs dict contains zero or
-    more keys, each of which map to a batched Tensor of their own.
-    The kwargs dict can be used for class labels, in which case the key is "y"
-    and the values are integer tensors of class labels.
-
-    :param data_dir: a dataset directory.
-    :param batch_size: the batch size of each returned pair.
-    :param image_size: the size to which images are resized.
-    :param class_cond: if True, include a "y" key in returned dicts for class
-                       label. If classes are not available and this is true, an
-                       exception will be raised.
-    :param deterministic: if True, yield results in a deterministic order.
-    """
     if not data_dir:
         raise ValueError("unspecified data directory")
-    all_files = _list_image_files_recursively(data_dir)
-    classes = None
-    if class_cond:
-        # Assume classes are the first part of the filename,
-        # before an underscore.
-        class_names = [bf.basename(path).split("_")[0] for path in all_files]
-        sorted_classes = {x: i for i, x in enumerate(sorted(set(class_names)))}
-        classes = [sorted_classes[x] for x in class_names]
+    # all_files = os.listdir(data_dir)
+
+    if not os.path.exists('../labels.txt'):
+        from tqdm import tqdm
+        npys = os.listdir(data_dir)
+        labels = dict()
+
+        for name in tqdm(npys):
+            action = int(name[17:20])
+            if action not in labels.keys():
+                labels[action] = []
+            labels[action].append(name)
+
+        newlabel = ''
+        for _ in np.arange(1, 121):
+            newlabel += str(_) + '\n'
+            for label in (labels[_]):
+                newlabel += label + '\n' 
+
+        f = open("./labels.txt",'w')
+        f.write(newlabel)
+
+
+    labels = dict()
+    with open('../labels.txt', 'r') as f:
+        curr_lab = 0
+        for line in f.readlines():
+            line = line.strip('\n')
+            if 0 < len(line) < 4:
+                # select one class only
+                if len(labels.keys()) > 1:
+                    break
+                labels[int(line)] = []
+                curr_lab = int(line)
+                continue
+            labels[curr_lab].append(line)
+
+    classes = False
     dataset = ImageDataset(
         image_size,
-        all_files,
-        classes=classes,
-        shard=MPI.COMM_WORLD.Get_rank(),
-        num_shards=MPI.COMM_WORLD.Get_size(),
+        data_dir,
+        labels,
+        classes=classes
     )
+    print('num of data:', len(dataset))
     if deterministic:
         loader = DataLoader(
             dataset, batch_size=batch_size, shuffle=False, num_workers=1, drop_last=True
@@ -53,54 +69,35 @@ def load_data(
         yield from loader
 
 
-def _list_image_files_recursively(data_dir):
-    results = []
-    for entry in sorted(bf.listdir(data_dir)):
-        full_path = bf.join(data_dir, entry)
-        ext = entry.split(".")[-1]
-        if "." in entry and ext.lower() in ["jpg", "jpeg", "png", "gif"]:
-            results.append(full_path)
-        elif bf.isdir(full_path):
-            results.extend(_list_image_files_recursively(full_path))
-    return results
-
-
 class ImageDataset(Dataset):
-    def __init__(self, resolution, image_paths, classes=None, shard=0, num_shards=1):
+    def __init__(self, resolution, data_dir, labels, classes=False):
         super().__init__()
         self.resolution = resolution
-        self.local_images = image_paths[shard:][::num_shards]
-        self.local_classes = None if classes is None else classes[shard:][::num_shards]
+        self.data_dir = data_dir
+        self.labels = labels
+        self.classes = classes
+        self.class_len = [len(self.labels[k]) for k in self.labels.keys()]
 
     def __len__(self):
-        return len(self.local_images)
+        return sum(self.class_len)
 
     def __getitem__(self, idx):
-        path = self.local_images[idx]
-        with bf.BlobFile(path, "rb") as f:
-            pil_image = Image.open(f)
-            pil_image.load()
+        assert idx < sum(self.class_len)
+        sum_idx, i = 0, 0
+        while i < len(self.class_len):
+            if sum_idx + self.class_len[i] > idx:
+                break
+            sum_idx += self.class_len[i]
+            i += 1
+        
+        path = self.labels[i + 1][idx - sum_idx]
 
-        # We are not on a new enough PIL to support the `reducing_gap`
-        # argument, which uses BOX downsampling at powers of two first.
-        # Thus, we do it by hand to improve downsample quality.
-        while min(*pil_image.size) >= 2 * self.resolution:
-            pil_image = pil_image.resize(
-                tuple(x // 2 for x in pil_image.size), resample=Image.BOX
-            )
-
-        scale = self.resolution / min(*pil_image.size)
-        pil_image = pil_image.resize(
-            tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC
-        )
-
-        arr = np.array(pil_image.convert("RGB"))
-        crop_y = (arr.shape[0] - self.resolution) // 2
-        crop_x = (arr.shape[1] - self.resolution) // 2
-        arr = arr[crop_y : crop_y + self.resolution, crop_x : crop_x + self.resolution]
-        arr = arr.astype(np.float32) / 127.5 - 1
+        data = np.load(os.path.join(self.data_dir, path), allow_pickle=True).item()
+        image = data['skel_body0']
+        image = image.astype(np.float32)
+        arr = cv2.resize(image, (self.resolution, self.resolution), interpolation=cv2.INTER_CUBIC)
 
         out_dict = {}
-        if self.local_classes is not None:
-            out_dict["y"] = np.array(self.local_classes[idx], dtype=np.int64)
+        if self.classes:
+            out_dict["y"] = np.array(i + 1, dtype=np.int64)
         return np.transpose(arr, [2, 0, 1]), out_dict

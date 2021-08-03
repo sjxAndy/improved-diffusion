@@ -9,6 +9,7 @@ import os
 import numpy as np
 import torch as th
 import torch.distributed as dist
+import cv2
 
 from improved_diffusion import dist_util, logger
 from improved_diffusion.script_util import (
@@ -55,11 +56,19 @@ def main():
             clip_denoised=args.clip_denoised,
             model_kwargs=model_kwargs,
         )
-        sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
+        # sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
         sample = sample.permute(0, 2, 3, 1)
         sample = sample.contiguous()
+        sample = sample.cpu().numpy()
+        tmp = []
+        for _ in range(sample.shape[0]):
+            tmp.append(cv2.resize(sample[_], (25, args.image_size), interpolation=cv2.INTER_CUBIC))
+        # tmp = cv2.resize(sample, (self.resolution, self.resolution), interpolation=cv2.INTER_CUBIC)
+        all_images.extend(tmp)
+        logger.log(f"created {len(all_images) * args.batch_size} samples")
+        
 
-        gathered_samples = [th.zeros_like(sample) for _ in range(dist.get_world_size())]
+        '''gathered_samples = [th.zeros_like(sample) for _ in range(dist.get_world_size())]
         dist.all_gather(gathered_samples, sample)  # gather not supported with NCCL
         all_images.extend([sample.cpu().numpy() for sample in gathered_samples])
         if args.class_cond:
@@ -68,9 +77,10 @@ def main():
             ]
             dist.all_gather(gathered_labels, classes)
             all_labels.extend([labels.cpu().numpy() for labels in gathered_labels])
-        logger.log(f"created {len(all_images) * args.batch_size} samples")
+        logger.log(f"created {len(all_images) * args.batch_size} samples")'''
 
-    arr = np.concatenate(all_images, axis=0)
+    # arr = np.concatenate(all_images, axis=0)
+    arr = np.array(all_images)
     arr = arr[: args.num_samples]
     if args.class_cond:
         label_arr = np.concatenate(all_labels, axis=0)
@@ -91,8 +101,8 @@ def main():
 def create_argparser():
     defaults = dict(
         clip_denoised=True,
-        num_samples=10000,
-        batch_size=16,
+        num_samples=8,
+        batch_size=8,
         use_ddim=False,
         model_path="",
     )
