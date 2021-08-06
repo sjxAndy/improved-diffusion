@@ -36,7 +36,7 @@ def load_data(
 
 
     labels = dict()
-    with open('../labels.txt', 'r') as f:
+    with open('./labels.txt', 'r') as f:
         curr_lab = 0
         for line in f.readlines():
             line = line.strip('\n')
