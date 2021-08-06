@@ -68,6 +68,31 @@ def load_data(
     while True:
         yield from loader
 
+def normalize(image):
+    def mul(a, b):
+        return np.array([a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]])
+    nor_img = None
+    for i in range(image.shape[0]):
+        frame = image[i]
+        frame -= frame[1]
+        x = frame[4] - frame[8]
+        spine = frame[20] - frame[0]
+        y = mul(x, mul(x, spine))
+        if np.sum(y * spine) < 0:
+            y = -y
+        z = mul(x, y)
+        x /= np.sqrt(np.sum(x ** 2))
+        y /= np.sqrt(np.sum(y ** 2))
+        z /= np.sqrt(np.sum(z ** 2))
+        base = np.array([x, y, z])
+        for j in range(frame.shape[0]):
+            frame[j] = np.dot(frame[j], np.linalg.inv(base))
+        # print(frame[4] - frame[8])
+        if nor_img is None:
+            nor_img = np.array([frame])
+        else:
+            nor_img = np.concatenate((nor_img, np.array([frame])), axis=0)
+    return nor_img
 
 class ImageDataset(Dataset):
     def __init__(self, resolution, data_dir, labels, classes=False):
@@ -95,6 +120,7 @@ class ImageDataset(Dataset):
         data = np.load(os.path.join(self.data_dir, path), allow_pickle=True).item()
         image = data['skel_body0']
         image = image.astype(np.float32)
+        image = normalize(image)
         arr = cv2.resize(image, (self.resolution, self.resolution), interpolation=cv2.INTER_CUBIC)
 
         out_dict = {}
