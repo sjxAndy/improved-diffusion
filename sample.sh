@@ -1,2 +1,2 @@
 # CUDA_VISIBLE_DEVICES=1 python scripts/image_sample.py --model_path /home/lyh-cgy/sjx/models/cifar10_uncond_50M_500K.pt --image_size 64 --num_channels 128 --num_res_blocks 3 --diffusion_steps 4000 --noise_schedule linear
-CUDA_VISIBLE_DEVICES=0 python scripts/image_sample.py --model_path /tmp/openai-2021-07-31-15-46-48-627823/ema_0.9999_010000.pt --image_size 32 --num_channels 128 --num_res_blocks 3 --diffusion_steps 4000 --noise_schedule linear
+CUDA_VISIBLE_DEVICES=0 python scripts/image_sample.py --model_path /home/lyh-cgy/sjx/models/ema_0.9999_035000.pt --image_size 32 --num_channels 128 --num_res_blocks 3 --diffusion_steps 4000 --noise_schedule linear

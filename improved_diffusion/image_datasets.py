@@ -14,40 +14,15 @@ def load_data(
         raise ValueError("unspecified data directory")
     # all_files = os.listdir(data_dir)
 
-    if not os.path.exists('../labels.txt'):
-        from tqdm import tqdm
-        npys = os.listdir(data_dir)
-        labels = dict()
-
-        for name in tqdm(npys):
-            action = int(name[17:20])
-            if action not in labels.keys():
-                labels[action] = []
-            labels[action].append(name)
-
-        newlabel = ''
-        for _ in np.arange(1, 121):
-            newlabel += str(_) + '\n'
-            for label in (labels[_]):
-                newlabel += label + '\n' 
-
-        f = open("./labels.txt",'w')
-        f.write(newlabel)
-
-
+    from tqdm import tqdm
+    npys = os.listdir(data_dir)
     labels = dict()
-    with open('./labels.txt', 'r') as f:
-        curr_lab = 0
-        for line in f.readlines():
-            line = line.strip('\n')
-            if 0 < len(line) < 4:
-                # select one class only
-                if len(labels.keys()) > 1:
-                    break
-                labels[int(line)] = []
-                curr_lab = int(line)
-                continue
-            labels[curr_lab].append(line)
+
+    for name in tqdm(npys):
+        action = int(name[17:20])
+        if action not in labels.keys():
+            labels[action] = []
+        labels[action].append(name)
 
     classes = False
     dataset = ImageDataset(
@@ -81,9 +56,9 @@ def normalize(image):
         if np.sum(y * spine) < 0:
             y = -y
         z = mul(x, y)
-        x /= np.sqrt(np.sum(x ** 2))
-        y /= np.sqrt(np.sum(y ** 2))
-        z /= np.sqrt(np.sum(z ** 2))
+        x = x / np.sqrt(np.sum(x ** 2)) if np.sqrt(np.sum(x ** 2)) > 1e-9 else np.array([1,0,0])
+        y = y / np.sqrt(np.sum(y ** 2)) if np.sqrt(np.sum(y ** 2)) > 1e-9 else np.array([0,1,0])
+        z = z / np.sqrt(np.sum(z ** 2)) if np.sqrt(np.sum(z ** 2)) > 1e-9 else np.array([0,0,1])
         base = np.array([x, y, z])
         for j in range(frame.shape[0]):
             frame[j] = np.dot(frame[j], np.linalg.inv(base))
@@ -102,6 +77,7 @@ class ImageDataset(Dataset):
         self.labels = labels
         self.classes = classes
         self.class_len = [len(self.labels[k]) for k in self.labels.keys()]
+        self.class_keys = [k for k in self.labels.keys()]
 
     def __len__(self):
         return sum(self.class_len)
@@ -109,13 +85,13 @@ class ImageDataset(Dataset):
     def __getitem__(self, idx):
         assert idx < sum(self.class_len)
         sum_idx, i = 0, 0
-        while i < len(self.class_len):
+        while sum_idx < len(self.class_len):
             if sum_idx + self.class_len[i] > idx:
                 break
             sum_idx += self.class_len[i]
             i += 1
         
-        path = self.labels[i + 1][idx - sum_idx]
+        path = self.labels[self.class_keys[i]][idx - sum_idx]
 
         data = np.load(os.path.join(self.data_dir, path), allow_pickle=True).item()
         image = data['skel_body0']
