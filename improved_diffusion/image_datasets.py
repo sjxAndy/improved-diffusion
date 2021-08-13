@@ -48,6 +48,7 @@ def normalize(image):
         return np.array([a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]])
     nor_img = None
     for i in range(image.shape[0]):
+        # frame is 25 * 3
         frame = image[i]
         frame -= frame[1]
         x = frame[4] - frame[8]
@@ -56,12 +57,17 @@ def normalize(image):
         if np.sum(y * spine) < 0:
             y = -y
         z = mul(x, y)
+        eps = 1e-9
+        # print(frame, x, y, z)
         x = x / np.sqrt(np.sum(x ** 2)) if np.sqrt(np.sum(x ** 2)) > 1e-9 else np.array([1,0,0])
         y = y / np.sqrt(np.sum(y ** 2)) if np.sqrt(np.sum(y ** 2)) > 1e-9 else np.array([0,1,0])
         z = z / np.sqrt(np.sum(z ** 2)) if np.sqrt(np.sum(z ** 2)) > 1e-9 else np.array([0,0,1])
         base = np.array([x, y, z])
         for j in range(frame.shape[0]):
             frame[j] = np.dot(frame[j], np.linalg.inv(base))
+        '''spine = frame[20] - frame[0]
+        div = np.sqrt(np.sum(spine ** 2))
+        frame = frame / div if div > 1e-9 else frame / (div + eps)'''
         # print(frame[4] - frame[8])
         if nor_img is None:
             nor_img = np.array([frame])
@@ -85,7 +91,7 @@ class ImageDataset(Dataset):
     def __getitem__(self, idx):
         assert idx < sum(self.class_len)
         sum_idx, i = 0, 0
-        while sum_idx < len(self.class_len):
+        while i < len(self.class_len):
             if sum_idx + self.class_len[i] > idx:
                 break
             sum_idx += self.class_len[i]
