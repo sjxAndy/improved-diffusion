@@ -15,16 +15,6 @@ def load_data(
         raise ValueError("unspecified data directory")
     # all_files = os.listdir(data_dir)
 
-    from tqdm import tqdm
-    npys = os.listdir(data_dir)
-    labels = dict()
-
-    for name in tqdm(npys):
-        action = int(name[17:20])
-        if action not in labels.keys():
-            labels[action] = []
-        labels[action].append(name)
-
     ntu_action_labels = [6, 7, 8, 9, 22, 23, 24, 38, 80, 93, 99, 100, 102]
 
     kinect_vibe_extract_joints = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 21, 24, 38]
