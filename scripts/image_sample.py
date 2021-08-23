@@ -40,7 +40,7 @@ def main():
     logger.log("sampling...")
     all_images = []
     all_labels = []
-    while len(all_images) * args.batch_size < args.num_samples:
+    while len(all_images) < args.num_samples:
         model_kwargs = {}
         if args.class_cond:
             classes = th.randint(
@@ -65,7 +65,7 @@ def main():
             tmp.append(cv2.resize(sample[_], (25, args.image_size), interpolation=cv2.INTER_CUBIC))
         # tmp = cv2.resize(sample, (self.resolution, self.resolution), interpolation=cv2.INTER_CUBIC)
         all_images.extend(tmp)
-        logger.log(f"created {len(all_images) * args.batch_size} samples")
+        logger.log(f"created {len(all_images)} samples")
         
 
         '''gathered_samples = [th.zeros_like(sample) for _ in range(dist.get_world_size())]
@@ -101,7 +101,7 @@ def main():
 def create_argparser():
     defaults = dict(
         clip_denoised=True,
-        num_samples=8,
+        num_samples=104,
         batch_size=8,
         use_ddim=False,
         model_path="",
