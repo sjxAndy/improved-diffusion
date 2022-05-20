@@ -24,7 +24,7 @@ def load_data(
             labels[action] = []
         labels[action].append(name)
 
-    classes = False
+    classes = class_cond
     dataset = ImageDataset(
         image_size,
         data_dir,
@@ -107,5 +107,5 @@ class ImageDataset(Dataset):
 
         out_dict = {}
         if self.classes:
-            out_dict["y"] = np.array(i + 1, dtype=np.int64)
+            out_dict["y"] = np.array(i, dtype=np.int64)
         return np.transpose(arr, [2, 0, 1]), out_dict

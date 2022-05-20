@@ -40,19 +40,26 @@ def main():
     logger.log("sampling...")
     all_images = []
     all_labels = []
+    average_sample = True
+    batch_size = args.batch_size
+    if average_sample:
+        all_classes = th.arange(0, args.num_samples + batch_size, device=dist_util.dev()) % NUM_CLASSES
     while len(all_images) < args.num_samples:
         model_kwargs = {}
         if args.class_cond:
-            classes = th.randint(
-                low=0, high=NUM_CLASSES, size=(args.batch_size,), device=dist_util.dev()
-            )
+            if average_sample:
+                classes = all_classes[len(all_images): len(all_images) + batch_size]
+            else:
+                classes = th.randint(
+                    low=0, high=NUM_CLASSES, size=(args.batch_size,), device=dist_util.dev()
+                )
             model_kwargs["y"] = classes
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
         )
         sample = sample_fn(
             model,
-            (args.batch_size, 3, args.image_size, args.image_size),
+            (batch_size, 3, args.image_size, args.image_size),
             clip_denoised=args.clip_denoised,
             model_kwargs=model_kwargs,
         )
@@ -65,26 +72,14 @@ def main():
             tmp.append(cv2.resize(sample[_], (25, args.image_size), interpolation=cv2.INTER_CUBIC))
         # tmp = cv2.resize(sample, (self.resolution, self.resolution), interpolation=cv2.INTER_CUBIC)
         all_images.extend(tmp)
+        all_labels.extend(classes.cpu().numpy())
         logger.log(f"created {len(all_images)} samples")
-        
-
-        '''gathered_samples = [th.zeros_like(sample) for _ in range(dist.get_world_size())]
-        dist.all_gather(gathered_samples, sample)  # gather not supported with NCCL
-        all_images.extend([sample.cpu().numpy() for sample in gathered_samples])
-        if args.class_cond:
-            gathered_labels = [
-                th.zeros_like(classes) for _ in range(dist.get_world_size())
-            ]
-            dist.all_gather(gathered_labels, classes)
-            all_labels.extend([labels.cpu().numpy() for labels in gathered_labels])
-        logger.log(f"created {len(all_images) * args.batch_size} samples")'''
 
     # arr = np.concatenate(all_images, axis=0)
     arr = np.array(all_images)
     arr = arr[: args.num_samples]
     if args.class_cond:
-        label_arr = np.concatenate(all_labels, axis=0)
-        label_arr = label_arr[: args.num_samples]
+        label_arr = np.array(all_labels)[: args.num_samples]
     if dist.get_rank() == 0:
         shape_str = "x".join([str(x) for x in arr.shape])
         out_path = os.path.join(logger.get_dir(), f"samples_{shape_str}.npz")
@@ -101,7 +96,7 @@ def main():
 def create_argparser():
     defaults = dict(
         clip_denoised=True,
-        num_samples=104,
+        num_samples=13,
         batch_size=8,
         use_ddim=False,
         model_path="",
